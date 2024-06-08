@@ -48,6 +48,52 @@ impl Debug for Digit {
 #[derive(Copy)]
 struct Candidates(u16);
 
+impl Candidates {
+    fn new(c: u16) -> Candidates {
+        Candidates(c)
+    }
+
+    fn full() -> Candidates {
+        Candidates(0b111111111)
+    }
+
+    fn from_digit(d: Digit) -> Candidates {
+        Candidates(1 << (d.0 - 1))
+    }
+
+    fn from_digits(ds: Vec<Digit>) -> Candidates {
+        let mut bits = 0;
+        for d in ds.iter() {
+            bits |= 1 << (d.0 - 1);
+        }
+        Candidates(bits)
+    }
+
+    fn size(&self) -> u8 {
+        self.0.count_ones() as u8
+    }
+
+    fn pick_digit(&self) -> Digit {
+        Digit::new(self.0.trailing_zeros() as u8 + 1)
+    }
+
+    fn to_digits(&self) -> Vec<Digit> {
+        let mut bits = self.0;
+        let mut digits = Vec::new();
+        for d in 1..=9 {
+            if bits & 1 != 0 {
+                digits.push(Digit::new(d));
+            }
+            bits >>= 1;
+        }
+        digits
+    }
+
+    fn exclude_digits(&self, ds: Vec<Digit>) -> Candidates {
+        Candidates::new(self.0 & !Candidates::from_digits(ds).0)
+    }
+}
+
 #[derive(Debug)]
 #[derive(Clone)]
 pub enum Op {
@@ -69,7 +115,7 @@ impl Board {
     pub fn new() -> Board {
         Board {
             cells: [[Digit::empty(); 9]; 9],
-            candidates: [[Self::full_candidates(); 9]; 9],
+            candidates: [[Candidates::full(); 9]; 9],
             ops: Vec::new(),
         }
     }
@@ -178,7 +224,7 @@ impl Board {
                 if self.cells[y][x].present() {
                     continue;
                 }
-                if let [d] = self.candidates(x, y).as_slice() {
+                if let [d] = self.candidates[y][x].to_digits().as_slice() {
                     return Some(Op::Propagate(x, y, *d, "only one candidate".to_string()));
                 }
             }
@@ -206,12 +252,12 @@ impl Board {
                 if self.cells[y][x].present() {
                     continue;
                 }
-                let c = Self::condidate_size(self.candidates[y][x]);
+                let c = self.candidates[y][x].size();
                 if c < min {
                     min = c;
                     dx = x;
                     dy = y;
-                    dd = Self::pick_digit_from_candidates(self.candidates[y][x]);
+                    dd = self.candidates[y][x].pick_digit();
                 }
             }
         }
@@ -329,7 +375,7 @@ impl Board {
 
         // Only N candidates can be in N cells in the group
         for (group, _name) in Self::groups() {
-            let mut inverse_map = HashMap::new();  // Vec<u8> -> Vec<(x,y)>
+            let mut inverse_map = HashMap::new();  // Vec<Digit> -> Vec<(x,y)>
             for ((x, y), ds) in self.candidates_by_potision_in_group(&group) {
                 inverse_map.entry(ds).or_insert(Vec::new()).push((x, y));
             }
@@ -385,7 +431,7 @@ impl Board {
 
     fn set_digit(&mut self, x: usize, y: usize, d: Digit) -> Result<(), String> {
         self.cells[y][x] = d;
-        self.candidates[y][x] = Self::digit_to_candidate(d);
+        self.candidates[y][x] = Candidates::from_digit(d);
 
         // exclude candidates in the same group
         for (group, _) in Self::groups_for(x, y) {
@@ -399,17 +445,13 @@ impl Board {
         Ok(())
     }
 
-    fn candidates(&self, x: usize, y: usize) -> Vec<Digit> {
-        Self::candidates_to_digits(self.candidates[y][x])
-    }
-
     fn set_candidates(&mut self, x: usize, y: usize, ds: Vec<Digit>) {
-        self.candidates[y][x] = Self::digits_to_candidates(ds);
+        self.candidates[y][x] = Candidates::from_digits(ds);
     }
 
     fn exclude_candidates(&mut self, x: usize, y: usize, ds: Vec<Digit>) -> Result<(), String> {
-        self.candidates[y][x] = Self::exclude_digits_from_candidates(self.candidates[y][x], ds);
-        if Self::condidate_size(self.candidates[y][x]) == 0 {
+        self.candidates[y][x] = self.candidates[y][x].exclude_digits(ds);
+        if self.candidates[y][x].size() == 0 {
             Err(format!("Conflict at ({}, {})", x, y))
         } else {
             Ok(())
@@ -423,7 +465,7 @@ impl Board {
             if self.cells[*y][*x].present() {
                 continue;
             }
-            poses.insert((*x, *y), self.candidates(*x, *y));
+            poses.insert((*x, *y), self.candidates[*y][*x].to_digits());
         }
         poses
     }
@@ -435,7 +477,7 @@ impl Board {
             if self.cells[*y][*x].present() {
                 continue;
             }
-            for d in Self::candidates_to_digits(self.candidates[*y][*x]) {
+            for d in self.candidates[*y][*x].to_digits() {
                 poses.entry(d).or_insert(Vec::new()).push((*x, *y));
             }
         }
@@ -449,43 +491,5 @@ impl Board {
         for op in ops {
             self.apply(op).unwrap();
         }
-    }
-
-    //
-    // bit operations
-    //
-
-    fn full_candidates() -> Candidates {
-        Candidates(0b111111111)
-    }
-    fn digit_to_candidate(d: Digit) -> Candidates {
-        Candidates(1 << (d.0 - 1))
-    }
-    fn pick_digit_from_candidates(cand: Candidates) -> Digit {
-        Digit::new(cand.0.trailing_zeros() as u8 + 1)
-    }
-    fn condidate_size(cand: Candidates) -> u8 {
-        cand.0.count_ones() as u8
-    }
-    fn candidates_to_digits(cand: Candidates) -> Vec<Digit> {
-        let mut bits = cand.0;
-        let mut digits = Vec::new();
-        for d in 1..=9 {
-            if bits & 1 != 0 {
-                digits.push(Digit::new(d));
-            }
-            bits >>= 1;
-        }
-        digits
-    }
-    fn digits_to_candidates(ds: Vec<Digit>) -> Candidates {
-        let mut bits = 0;
-        for d in ds.iter() {
-            bits |= 1 << (d.0 - 1);
-        }
-        Candidates(bits)
-    }
-    fn exclude_digits_from_candidates(cand: Candidates, ds: Vec<Digit>) -> Candidates {
-        Candidates(cand.0 & !Self::digits_to_candidates(ds).0)
     }
 }
