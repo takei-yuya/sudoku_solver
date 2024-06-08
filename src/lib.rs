@@ -3,11 +3,7 @@ use std::fmt::Debug;
 use std::fmt::Display;
 use std::mem::take;
 
-#[derive(Clone)]
-#[derive(Copy)]
-#[derive(PartialEq)]
-#[derive(Eq)]
-#[derive(Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Digit(u8);
 
 impl Digit {
@@ -43,9 +39,7 @@ impl Debug for Digit {
     }
 }
 
-#[derive(Debug)]
-#[derive(Clone)]
-#[derive(Copy)]
+#[derive(Debug, Clone, Copy)]
 struct Candidates(u16);
 
 impl Candidates {
@@ -94,8 +88,7 @@ impl Candidates {
     }
 }
 
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum Op {
     Init(usize, usize, Digit),
     Propagate(usize, usize, Digit, String),
@@ -138,11 +131,19 @@ impl Board {
     //  # empty line or comment line
     pub fn parse(s: &str) -> Result<Board, String> {
         let mut board = Board::new();
-        for (y, line) in s.lines().filter(|line| !Self::is_empty_line(line) ).enumerate() {
+        for (y, line) in s
+            .lines()
+            .filter(|line| !Self::is_empty_line(line))
+            .enumerate()
+        {
             if y >= 9 {
                 return Err("Too many lines".to_string());
             }
-            for (x, c) in line.chars().filter(|c| !Self::is_empty_char(*c) ).enumerate() {
+            for (x, c) in line
+                .chars()
+                .filter(|c| !Self::is_empty_char(*c))
+                .enumerate()
+            {
                 if x >= 9 {
                     return Err("Too many characters in a line".to_string());
                 }
@@ -165,14 +166,14 @@ impl Board {
     pub fn solve(&mut self) -> Result<(), String> {
         while !self.is_solved() {
             // propagate ot update candidates, then decide
-            let op = self.propagate().unwrap_or_else(||
+            let op = self.propagate().unwrap_or_else(|| {
                 if let Some(Op::UpdateCandidates()) = self.ops.last() {
                     self.decide()
                 } else {
                     // update candidates is little bit expensive, so do it only at no progress
                     Op::UpdateCandidates()
                 }
-            );
+            });
             // backtracking if conflict
             self.apply(op).or_else(|_| self.backtrack())?;
         }
@@ -234,7 +235,12 @@ impl Board {
         for (group, name) in Self::groups() {
             for (d, poses) in self.candidate_positions_in_group(&group) {
                 if let [(x, y)] = poses.as_slice() {
-                    return Some(Op::Propagate(*x, *y, d, format!("only one candidate in {}", name)));
+                    return Some(Op::Propagate(
+                        *x,
+                        *y,
+                        d,
+                        format!("only one candidate in {}", name),
+                    ));
                 }
             }
         }
@@ -271,15 +277,18 @@ impl Board {
         while let Some(op) = self.ops.pop() {
             println!("{:?}", op);
             match op {
-                Op::Init(_, _, _) => { self.ops.push(op); return Err("No more decision to backtrack".to_string()); },
-                Op::Propagate(_,_,_,_) => continue,
+                Op::Init(_, _, _) => {
+                    self.ops.push(op);
+                    return Err("No more decision to backtrack".to_string());
+                }
+                Op::Propagate(_, _, _, _) => continue,
                 Op::UpdateCandidates() => continue,
                 Op::Decide(x, y, d) => {
                     // Since undoing candidates is difficult, reconstruct the board from scratch
                     self.reconstruct();
                     self.apply(Op::Conflict(x, y, d))?;
                     return Ok(());
-                },
+                }
                 Op::Conflict(_, _, _) => continue,
             }
         }
@@ -288,11 +297,11 @@ impl Board {
 
     fn apply(&mut self, op: Op) -> Result<(), String> {
         match op {
-            Op::Init(x, y, d) =>            self.set_digit(x, y, d)?,
-            Op::Propagate(x, y, d, _) =>    self.set_digit(x, y, d)?,
-            Op::UpdateCandidates() =>       self.update_candidates()?,
-            Op::Decide(x, y, d) =>          self.set_digit(x, y, d)?,
-            Op::Conflict(x, y, d) =>        self.exclude_candidates(x, y, vec!(d))?,
+            Op::Init(x, y, d) => self.set_digit(x, y, d)?,
+            Op::Propagate(x, y, d, _) => self.set_digit(x, y, d)?,
+            Op::UpdateCandidates() => self.update_candidates()?,
+            Op::Decide(x, y, d) => self.set_digit(x, y, d)?,
+            Op::Conflict(x, y, d) => self.exclude_candidates(x, y, vec![d])?,
         }
         self.ops.push(op);
         Ok(())
@@ -347,8 +356,8 @@ impl Board {
     fn update_candidates(&mut self) -> Result<(), String> {
         // Exact N cells have same N candidates in the group
         for (group, _name) in Self::groups() {
-            let poses = self.candidate_positions_in_group(&group);  // digit -> [(x, y)]
-            let mut inverse_map = HashMap::new();  // Vec<(x,y)> -> Vec<digit>
+            let poses = self.candidate_positions_in_group(&group); // digit -> [(x, y)]
+            let mut inverse_map = HashMap::new(); // Vec<(x,y)> -> Vec<digit>
             for (d, ps) in poses.iter() {
                 inverse_map.entry(ps).or_insert(Vec::new()).push(*d);
             }
@@ -375,7 +384,7 @@ impl Board {
 
         // Only N candidates can be in N cells in the group
         for (group, _name) in Self::groups() {
-            let mut inverse_map = HashMap::new();  // Vec<Digit> -> Vec<(x,y)>
+            let mut inverse_map = HashMap::new(); // Vec<Digit> -> Vec<(x,y)>
             for ((x, y), ds) in self.candidates_by_potision_in_group(&group) {
                 inverse_map.entry(ds).or_insert(Vec::new()).push((x, y));
             }
@@ -439,7 +448,7 @@ impl Board {
                 if *x0 == x && *y0 == y {
                     continue;
                 }
-                self.exclude_candidates(*x0, *y0, vec!(d))?;
+                self.exclude_candidates(*x0, *y0, vec![d])?;
             }
         }
         Ok(())
@@ -459,7 +468,10 @@ impl Board {
     }
 
     // (x, y) -> [digit] in the group
-    fn candidates_by_potision_in_group(&self, group: &Vec<(usize, usize)>) -> HashMap<(usize, usize), Vec<Digit>> {
+    fn candidates_by_potision_in_group(
+        &self,
+        group: &Vec<(usize, usize)>,
+    ) -> HashMap<(usize, usize), Vec<Digit>> {
         let mut poses = HashMap::new();
         for (x, y) in group.iter() {
             if self.cells[*y][*x].present() {
@@ -471,7 +483,10 @@ impl Board {
     }
 
     // digit -> [(x, y)] in the group
-    fn candidate_positions_in_group(&self, group: &Vec<(usize, usize)>) -> HashMap<Digit, Vec<(usize, usize)>> {
+    fn candidate_positions_in_group(
+        &self,
+        group: &Vec<(usize, usize)>,
+    ) -> HashMap<Digit, Vec<(usize, usize)>> {
         let mut poses = HashMap::new();
         for (x, y) in group.iter() {
             if self.cells[*y][*x].present() {
