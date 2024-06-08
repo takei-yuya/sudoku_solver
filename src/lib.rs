@@ -32,9 +32,9 @@ impl Board {
         s.chars().all(|c| c.is_whitespace()) || s.starts_with("#")
     }
 
-    // is space, underscore or dot
+    // is space
     fn is_empty_char(c: char) -> bool {
-        c.is_whitespace() || c == '_' || c == '.'
+        c.is_whitespace()
     }
 
     // e.g.
@@ -46,16 +46,24 @@ impl Board {
     pub fn parse(s: &str) -> Result<Board, String> {
         let mut board = Board::new();
         for (y, line) in s.lines().filter(|line| !Self::is_empty_line(line) ).enumerate() {
+            if y >= 9 {
+                return Err("Too many lines".to_string());
+            }
             for (x, c) in line.chars().filter(|c| !Self::is_empty_char(*c) ).enumerate() {
-                if c.is_digit(10) {
-                    let d = c.to_digit(10).unwrap() as u8;
-                    if d == 0 {
-                        continue;
-                    }
-                    board.apply(Op::Init(x, y, d))?;
-                } else {
+                if x >= 9 {
+                    return Err("Too many characters in a line".to_string());
+                }
+                if c == '_' || c == '.' || c == '0' {
+                    continue;
+                }
+                if !c.is_digit(10) {
                     return Err(format!("Invalid character '{}' at ({}, {})", c, x, y));
                 }
+                let d = c.to_digit(10).unwrap() as u8;
+                if d == 0 {
+                    continue;
+                }
+                board.apply(Op::Init(x, y, d))?;
             }
         }
         Ok(board)
@@ -141,6 +149,7 @@ impl Board {
     }
 
     fn decide(&self) -> Op {
+        // Find the cell with the smallest number of candidates
         let mut dx = 0;
         let mut dy = 0;
         let mut dd = 0;
