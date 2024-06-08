@@ -10,6 +10,9 @@ fn main() -> Result<(), String> {
             Err(e)
         })?;
         board.show();
+        for op in board.ops() {
+            println!("{:?}", op);
+        }
         println!();
     }
     Ok(())
